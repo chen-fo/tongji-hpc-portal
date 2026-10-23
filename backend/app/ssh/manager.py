@@ -14,6 +14,7 @@ class SSHConnectionManager(Protocol):
     async def probe(self, account: OfficialAccount) -> dict: ...
     async def ensure_user_home(self, account: OfficialAccount, username: str) -> str: ...
     def terminal(self, account, user, nonce: str, cols: int, rows: int): ...
+    def files(self, account, user): ...
 
 
 def validate_target(settings: Settings, account: OfficialAccount) -> None:
@@ -58,6 +59,19 @@ class MockSSHConnectionManager:
         except OSError as exc:
             raise SSHUnavailable("Mock 工作目录创建失败") from exc
         return remote
+
+    @asynccontextmanager
+    async def files(self, account, user):
+        from app.ssh.mock_files import MockSFTP
+
+        home = posixpath.join(self._home(account), "user", user.username)
+        if user.remote_home != home:
+            raise SSHUnavailable("Mock 文件目录与用户映射不一致")
+        root = self.settings.mock_root.resolve()
+        local = root / str(account.id) / "user" / user.username
+        if not local.is_dir() or local.resolve() != local or not local.is_relative_to(root):
+            raise SSHUnavailable("Mock 文件目录不存在或存在软链接")
+        yield MockSFTP(local, home, self.settings.files_max_entries)
 
     @asynccontextmanager
     async def terminal(self, account, user, nonce: str, cols: int, rows: int):

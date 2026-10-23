@@ -13,7 +13,7 @@ export function Overview() {
       { key: 'account', label: '官方账号 ID', children: user!.official_account_id || '管理员未绑定计算账号' },
       { key: 'home', label: '个人工作目录', children: <code>{user!.remote_home || '—'}</code> },
     ]} /></Card>
-    <Alert type="info" showIcon message="Phase 2：账号管理与终端" description={user!.role === 'admin' ? '配置官方账号与成员后，可查询终端命令记录。真实 SSH 需完成只读和专用目录验收，再开放终端。' : '在“终端”中连接自己的工作空间。文件管理和 Slurm 管理页面尚未开放。'} />
+    <Alert type="info" showIcon message="Phase 3：个人文件管理" description={user!.role === 'admin' ? '可管理账号、成员并查询终端与文件操作记录。Slurm 任务和预算计费尚未开放。' : '在“终端”中使用 HPC，在“文件”中管理自己的数据。Slurm 任务和预算计费尚未开放。'} />
     <p className="muted">虚拟账号不对应 HPC Linux 系统用户，个人工作目录不提供操作系统级权限隔离。</p>
   </>;
 }

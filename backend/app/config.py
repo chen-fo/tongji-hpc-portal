@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     terminal_max_total: int = Field(default=32, ge=1, le=100)
     terminal_idle_seconds: int = Field(default=900, ge=1, le=86400)
     terminal_recheck_seconds: float = Field(default=1, ge=0.05, le=5)
+    files_max_upload_bytes: int = Field(default=100 * 1024**3, ge=1)
+    files_max_entries: int = Field(default=5000, ge=1, le=10000)
+    files_max_per_user: int = Field(default=2, ge=1, le=10)
+    files_max_per_account: int = Field(default=4, ge=1, le=20)
+    files_max_total: int = Field(default=8, ge=1, le=50)
+    files_idle_seconds: float = Field(default=60, ge=1, le=300)
 
 
 @lru_cache

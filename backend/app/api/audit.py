@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import func, select
 
-from app.models.entities import CommandAudit, OfficialAccount, TerminalSession, User
+from app.models.entities import CommandAudit, FileAudit, OfficialAccount, TerminalSession, User
 from app.security.dependencies import DB, AdminUser
 
 router = APIRouter(prefix="/api/admin", tags=["audit"])
@@ -84,3 +84,56 @@ def sessions(admin: AdminUser, db: DB, limit: int = Query(default=50, ge=1, le=2
         }
         for session, username, alias in rows
     ]
+
+
+@router.get("/file-audit")
+def file_audit(
+    request: Request,
+    admin: AdminUser,
+    db: DB,
+    username: str | None = Query(default=None, max_length=32),
+    operation: str | None = Query(default=None, max_length=16),
+    path: str | None = Query(default=None, max_length=4096),
+    official_account_id: int | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    query = (
+        select(FileAudit, User.username, OfficialAccount.alias)
+        .join(User, User.id == FileAudit.user_id)
+        .join(OfficialAccount, OfficialAccount.id == FileAudit.official_account_id)
+    )
+    if username:
+        query = query.where(User.username == username)
+    if operation:
+        query = query.where(FileAudit.operation == operation)
+    if path:
+        query = query.where(FileAudit.remote_path.startswith(path, autoescape=True))
+    if official_account_id is not None:
+        query = query.where(FileAudit.official_account_id == official_account_id)
+    if start:
+        query = query.where(FileAudit.timestamp >= utc_naive(start))
+    if end:
+        query = query.where(FileAudit.timestamp <= utc_naive(end))
+    total = db.scalar(select(func.count()).select_from(query.subquery()))
+    rows = db.execute(query.order_by(FileAudit.id.desc()).offset(offset).limit(limit))
+    return {
+        "total": total,
+        "dropped_events": request.app.state.audit.dropped,
+        "items": [
+            {
+                "id": event.id,
+                "timestamp": event.timestamp,
+                "username": username,
+                "official_alias": alias,
+                "operation": event.operation,
+                "remote_path": event.remote_path,
+                "destination": event.destination,
+                "status": event.status,
+                "file_size": event.file_size,
+            }
+            for event, username, alias in rows
+        ],
+    }

@@ -11,6 +11,7 @@ from app.config import Settings
 from app.models.entities import OfficialAccount
 from app.ssh.credentials import CredentialProvider
 from app.ssh.manager import SSHUnavailable
+from app.ssh.transport import open_direct_socket
 
 READONLY_COMMANDS = {
     "whoami": "whoami",
@@ -86,10 +87,22 @@ class RealSSHConnectionManager:
             account.alias, self.settings.ssh_profiles[account.alias], options.username
         )
         connection = None
+        sock = None
         try:
             async with asyncio.timeout(self.settings.ssh_timeout_seconds):
+                # AsyncSSH's default TCP dial can wait on the first dead DNS
+                # address until the entire login deadline expires. Race direct
+                # addresses, but leave proxy/jump/bind/canonical config to it.
+                if not (
+                    options.tunnel
+                    or options.proxy_command
+                    or options.local_addr
+                    or options.canonicalize_hostname
+                    or options.config.has_match_final()
+                ):
+                    sock = await open_direct_socket(options.host, options.port, options.family)
                 connection = await asyncssh.connect(
-                    options.host, options=options, password=password
+                    options.host, options=options, password=password, sock=sock
                 )
             yield connection
         except asyncssh.HostKeyNotVerifiable as exc:
@@ -98,15 +111,22 @@ class RealSSHConnectionManager:
             raise SSHUnavailable(
                 "SSH 认证失败；请检查 User、密钥/agent、Keychain 或本机密码输入"
             ) from exc
+        except asyncssh.SFTPError:
+            # File-service callers map protocol status codes without exposing remote messages.
+            raise
         except (asyncssh.Error, OSError, TimeoutError) as exc:
             raise SSHUnavailable(
                 "SSH 操作失败或超时；请检查网络、校园 VPN、跳板和服务端权限"
             ) from exc
         finally:
             password = None
-            if connection:
-                connection.close()
-                await connection.wait_closed()
+            try:
+                if connection:
+                    connection.close()
+                    await connection.wait_closed()
+            finally:
+                if sock is not None:
+                    sock.close()
 
     async def probe(self, account: OfficialAccount) -> dict:
         result = {"mode": "real-readonly", "connected": False, "checks": {}}
@@ -189,6 +209,20 @@ class RealSSHConnectionManager:
                         if await sftp.realpath(path) != path or not await sftp.isdir(path):
                             raise SSHUnavailable("测试目录存在软链接或不是目录，拒绝继续")
                     return remote
+
+    @asynccontextmanager
+    async def files(self, account, user):
+        async with self.connect(account) as conn:
+            async with asyncio.timeout(self.settings.ssh_timeout_seconds):
+                official_home = await self.resolve_home(conn)
+                expected = posixpath.join(official_home, "user", user.username)
+                if user.remote_home != expected:
+                    raise SSHUnavailable("文件目录与真实账号 HOME 不一致，禁止使用其他环境的映射")
+            async with conn.start_sftp_client() as sftp:
+                async with asyncio.timeout(self.settings.ssh_timeout_seconds):
+                    if await sftp.realpath(expected) != expected or not await sftp.isdir(expected):
+                        raise SSHUnavailable("个人文件目录不存在或为软链接")
+                yield sftp
 
     @asynccontextmanager
     async def terminal(self, account, user, nonce: str, cols: int, rows: int):

@@ -1,6 +1,7 @@
 import asyncio
 import re
 import secrets
+import socket
 
 import asyncssh
 import pytest
@@ -13,6 +14,7 @@ from app.ssh.directory_check import check_test_directory
 from app.ssh.manager import SSHUnavailable
 from app.ssh.mock_terminal import event_frame
 from app.ssh.real import READONLY_COMMANDS, RealSSHConnectionManager, connection_options
+from app.ssh.transport import open_direct_socket
 
 
 def test_ssh_config_resolution_allowlist_and_hostkey_policy(settings, tmp_path):
@@ -134,5 +136,135 @@ def test_asyncssh_real_transport_readonly_probe_sftp_and_hostkey_rejection(setti
             server.close()
             await server.wait_closed()
             credentials.clear()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", [None, "host_key", "password"])
+def test_dead_first_dns_address_falls_back_without_repeating_authentication(
+    settings, tmp_path, monkeypatch, failure
+):
+    async def scenario():
+        password = secrets.token_urlsafe(24)
+        authentications = []
+        stalled_sockets = []
+        stalled_cancelled = asyncio.Event()
+
+        class Server(asyncssh.SSHServer):
+            def begin_auth(self, username):
+                return True
+
+            def password_auth_supported(self):
+                return True
+
+            def validate_password(self, username, supplied):
+                authentications.append(username)
+                return username == "researcher" and supplied == password
+
+        async def process_handler(process):
+            assert process.command == "pwd -P"
+            process.stdout.write("/personal\n")
+            process.exit(0)
+
+        key = asyncssh.generate_private_key("ssh-ed25519")
+        server = await asyncssh.create_server(
+            Server, "127.0.0.1", 0, server_host_keys=[key], process_factory=process_handler
+        )
+        port = server.get_port()
+        known = tmp_path / "known_hosts"
+        trusted_key = asyncssh.generate_private_key("ssh-ed25519") if failure == "host_key" else key
+        # Trust only the original hostname, not the IP of the fallback socket.
+        known.write_text(f"[cluster.test]:{port} " + trusted_key.export_public_key().decode())
+        settings.ssh_known_hosts = str(known)
+        settings.ssh_config_file = str(tmp_path / "no_config")
+        settings.ssh_profiles = {
+            "official_a": SSHProfile(
+                host="cluster.test", port=port, username="researcher", auth="prompt"
+            )
+        }
+        settings.ssh_allowed_targets = [f"cluster.test:{port}"]
+        credentials = CredentialProvider()
+        credentials._passwords["official_a"] = "wrong" if failure == "password" else password
+        loop = asyncio.get_running_loop()
+        original_resolve, original_connect = loop.getaddrinfo, loop.sock_connect
+
+        async def resolve(host, requested_port, **kwargs):
+            if host != "cluster.test":
+                return await original_resolve(host, requested_port, **kwargs)
+            return [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.1", port)),
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port)),
+            ]
+
+        async def connect(sock, address):
+            if address[0] == "192.0.2.1":
+                stalled_sockets.append(sock)
+                try:
+                    await asyncio.Event().wait()  # Simulate a black hole without network traffic.
+                finally:
+                    stalled_cancelled.set()
+            else:
+                await original_connect(sock, address)
+
+        monkeypatch.setattr(loop, "getaddrinfo", resolve)
+        monkeypatch.setattr(loop, "sock_connect", connect)
+        manager = RealSSHConnectionManager(settings, credentials)
+        try:
+
+            async def run():
+                async with manager.connect(OfficialAccount(**account_payload())) as conn:
+                    result = await conn.run("pwd -P", check=True)
+                    assert result.stdout.strip() == "/personal"
+
+            # The second IPv4 address must work before the first one's timeout.
+            async with asyncio.timeout(3):
+                if failure:
+                    with pytest.raises(
+                        SSHUnavailable, match="Host Key" if failure == "host_key" else "认证失败"
+                    ):
+                        await run()
+                else:
+                    await run()
+            assert stalled_cancelled.is_set()
+            assert stalled_sockets and all(sock.fileno() == -1 for sock in stalled_sockets)
+            assert len(authentications) == (0 if failure == "host_key" else 1)
+        finally:
+            credentials.clear()
+            server.close()
+            await server.wait_closed()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("outcome", ["timeout", "cancel", "refused"])
+def test_dns_fallback_closes_all_sockets_on_failure(monkeypatch, outcome):
+    async def scenario():
+        loop = asyncio.get_running_loop()
+        sockets = []
+        started = asyncio.Event()
+
+        async def resolve(*args, **kwargs):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.1", 22))]
+
+        async def connect(sock, address):
+            sockets.append(sock)
+            started.set()
+            if outcome == "refused":
+                raise ConnectionRefusedError("test listener refused connection")
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(loop, "getaddrinfo", resolve)
+        monkeypatch.setattr(loop, "sock_connect", connect)
+        if outcome == "cancel":
+            task = asyncio.create_task(open_direct_socket("cluster.test", 22, socket.AF_UNSPEC))
+            await started.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            with pytest.raises(TimeoutError if outcome == "timeout" else ConnectionRefusedError):
+                async with asyncio.timeout(0.05):
+                    await open_direct_socket("cluster.test", 22, socket.AF_UNSPEC)
+        assert sockets and all(sock.fileno() == -1 for sock in sockets)
 
     asyncio.run(scenario())

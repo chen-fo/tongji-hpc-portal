@@ -28,4 +28,8 @@ code { font-size: 12px; overflow-wrap: anywhere; }.loading { height: 100vh; disp
 .terminal-container .xterm { height: 100%; }
 .audit-filters { gap: 12px; margin-bottom: 24px; }
 .audit-command { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 480px; margin: 0; }
+.file-breadcrumb { margin-bottom: 20px; }
+.file-breadcrumb .ant-btn { padding: 0 4px; }
+.file-transfer { background: white; border: 1px solid #e7ecee; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+.file-name { overflow-wrap: anywhere; }
 @media(max-width: 800px) { .login-layout { display: flex; flex-direction: column; padding: 32px 20px; gap: 24px; }.login-intro h1.ant-typography { font-size: 32px; }.app-header { padding: 0 16px; }.app-content { padding: 20px 16px; }.page-heading { align-items: flex-start; flex-direction: column; } }

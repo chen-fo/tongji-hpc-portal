@@ -3,7 +3,7 @@ import base64
 import logging
 import re
 
-from app.models.entities import CommandAudit, utcnow
+from app.models.entities import CommandAudit, FileAudit, utcnow
 
 logger = logging.getLogger("portal.audit")
 SENSITIVE = re.compile(
@@ -102,8 +102,28 @@ class AuditService:
 
     def _save(self, item):
         with self.sessions() as db:
-            db.add(CommandAudit(**item))
+            values = dict(item)
+            model = FileAudit if values.pop("_kind", "command") == "file" else CommandAudit
+            db.add(model(**values))
             db.commit()
+
+    def record_file(self, user_id, account_id, operation, path, destination, status, size):
+        try:
+            self.queue.put_nowait(
+                dict(
+                    _kind="file",
+                    user_id=user_id,
+                    official_account_id=account_id,
+                    timestamp=utcnow(),
+                    operation=operation,
+                    remote_path=path,
+                    destination=destination,
+                    status=status,
+                    file_size=size,
+                )
+            )
+        except asyncio.QueueFull:
+            self.dropped += 1
 
     async def _worker(self):
         while True:

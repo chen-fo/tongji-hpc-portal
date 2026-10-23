@@ -1,10 +1,10 @@
 # Tongji HPC Portal
 
-按 [plan.md](plan.md) 实现的 Phase 0 / Phase 1 / Phase 2：React + TypeScript + Vite + Ant Design + xterm.js 前端，FastAPI / AsyncSSH 模块化后端，SQLite / SQLAlchemy / Alembic，Argon2id 与 HttpOnly Session Cookie。
+按 [plan.md](plan.md) 实现的 Phase 0 / Phase 1 / Phase 2 / Phase 3：React + TypeScript + Vite + Ant Design + xterm.js 前端，FastAPI / AsyncSSH 模块化后端，SQLite / SQLAlchemy / Alembic，Argon2id 与 HttpOnly Session Cookie。
 
-保留 **Mock SSH**，支持 **真实 AsyncSSH**、WebSocket PTY 终端与管理员命令记录查询。真实目录写入与真实终端访问默认分别关闭，必须先完成只读检查并得到用户确认。Phase 3 文件管理与 Phase 4 Slurm 管理页面/API 未开发。
+保留 **Mock SSH**，支持 **真实 AsyncSSH**、WebSocket PTY 终端、SFTP 个人文件管理与管理员命令/文件记录查询。真实写入与真实终端访问默认分别关闭，须完成对应验收。Phase 4 Slurm 任务、预算与计费尚未开发。
 
-本机已按用户提供的 Intel 账号写入受保护且忽略版本管理的 `.env`；复用用户的 OpenSSH master 完成真实只读检查。AsyncSSH 独立认证与后续目录/网页终端验收状态见 [开发进度](docs/progress.md)，不能把 Mock 或复用连接测试当作 AsyncSSH 网页终端验收。
+本机已按用户提供的 Intel 账号写入受保护且忽略版本管理的 `.env`；AsyncSSH 独立只读检查、test01 目录、真实网页终端执行 `pwd` 与命令日志入库均已通过。同样的虚拟 HOME Shell 中公共 Conda/Python 补验通过；管理员网页对真实日志的显示仍待最后核对，详见 [开发进度](docs/progress.md)。
 
 ## 本地启动（macOS）
 
@@ -28,6 +28,13 @@ uv run python -m app.cli init-admin --username admin
 ```
 
 管理员密码通过终端隐藏输入两次，要求 12–128 个字符，没有默认密码。初始化是一次性的，重复执行不会覆盖现有管理员。
+
+已有安装升级时，先在 `backend/` 备份并迁移，再重启后端；保留已有管理员和成员，不需要重新初始化：
+
+```sh
+uv run python -m app.cli backup-db --output /absolute/path/new-backup.sqlite3
+uv run alembic upgrade head
+```
 
 启动后端，工作目录必须是 `backend/`：
 
@@ -87,7 +94,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Playwright 会自行启动前后端，运行前请停掉占用 8000、5173 的开发服务。浏览器测试使用临时 SQLite、临时 Mock 目录和运行时随机管理员密码，不修改开发数据，也不连接外部 SSH。
+Playwright 会在独立的 18000、15173 端口启动前后端，不需要停止日常 8000、5173 服务。浏览器测试使用临时 SQLite、临时 Mock 目录和运行时随机管理员密码，不修改开发数据，也不连接外部 SSH。
 
 ## 工程边界
 
@@ -97,12 +104,13 @@ Playwright 会自行启动前后端，运行前请停掉占用 8000、5173 的�
 - 所有修改请求校验 Origin；登录后的修改请求还校验 Session 绑定的 CSRF Token。API 没有公开注册或任意修改身份映射接口。
 - 登录失败按来源 IP 和用户名限制，15 分钟窗口内达到 5 次后拒绝登录，状态写入 SQLite。API 不信任客户端自行传入的 `X-Forwarded-For`。
 - 官方账号最多三个；已绑定用户的 SSH 主机、端口、登录用户名不可修改。成员用户名、映射和工作目录不可直接变更，管理员不能通过成员管理自我停用。
-- Phase 2 新增 `terminal_sessions`、`command_audit` 与增量迁移；文件审计和 Slurm 表暂不建立。
+- Phase 2 的终端记录继续保留；Phase 3 新增 `file_audit` 和 `0003_files` 迁移。Slurm 与计费表尚未建立。
 
 ## 文档
 
 - [开发进度与验收](docs/progress.md)
 - [Phase 2 配置、联调与终端手册](docs/phase2.md)
+- [Phase 3 文件管理与传输说明](docs/phase3.md)
 - [管理员手册](docs/admin.md)
 - [学生手册](docs/student.md)
 - [macOS 运行、备份与恢复](docs/macos.md)

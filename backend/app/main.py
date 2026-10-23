@@ -6,10 +6,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api import admin, audit, auth, terminal
+from app.api import admin, audit, auth, files, terminal
 from app.config import Settings, get_settings
 from app.db.session import make_engine, make_session_factory
 from app.services.audit import AuditService
+from app.services.files import FileService
 from app.services.terminal import TerminalService
 from app.ssh.manager import make_ssh_manager
 
@@ -26,7 +27,7 @@ def create_app(settings: Settings | None = None, credentials=None) -> FastAPI:
         try:
             with engine.connect() as conn:
                 revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-                if revision != "0002_terminal":
+                if revision != "0003_files":
                     raise RuntimeError("数据库版本不匹配，请执行 alembic upgrade head")
             app.state.audit.start()
             logger.info("Portal started; SSH mode=%s", settings.ssh_mode)
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None, credentials=None) -> FastAPI:
     app.state.engine = engine
     app.state.ssh = make_ssh_manager(settings, credentials)
     app.state.audit = AuditService(app.state.sessions)
+    app.state.files = FileService(settings, app.state.sessions, app.state.ssh, app.state.audit)
     app.state.terminals = TerminalService(
         settings, app.state.sessions, app.state.ssh, app.state.audit
     )
@@ -74,12 +76,13 @@ def create_app(settings: Settings | None = None, credentials=None) -> FastAPI:
     def health():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        return {"status": "ok", "ssh_mode": settings.ssh_mode, "phase": "0-2"}
+        return {"status": "ok", "ssh_mode": settings.ssh_mode, "phase": "0-3"}
 
     app.include_router(auth.router)
     app.include_router(admin.router)
     app.include_router(audit.router)
     app.include_router(terminal.router)
+    app.include_router(files.router)
     return app
 
 

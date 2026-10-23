@@ -38,6 +38,8 @@ Host tongji-intel
 
 允许列表检查解析后的 HostName:Port。使用已核对的 `known_hosts`，可以配置 `PORTAL_SSH_KNOWN_HOSTS`，或使用 SSH config/default known_hosts。拒绝关闭验证；Host Key 改变时停止，不自动信任新指纹。官方登录域名可能轮换不同节点，管理员应核实相应节点的主机密钥。[AsyncSSH 官方连接选项](https://asyncssh.readthedocs.io/en/latest/api.html)
 
+直接连接时，域名解析出的多个 TCP 地址按 250 ms 间隔尝试，避免首个不可达节点耗尽整个 SSH 连接超时；只将一个成功的 TCP socket 交给 AsyncSSH，继续以原 HostName/端口验证主机密钥并认证一次。不固定学校节点 IP，不因主机密钥不符或密码错误而轮询重试认证。全部连接仍受 `PORTAL_SSH_TIMEOUT_SECONDS` 约束，取消及失败时关闭未使用的 socket。ProxyJump、ProxyCommand、BindAddress、主机名规范化或 Match final 配置继续交给 AsyncSSH 原有连接逻辑处理。
+
 认证优先使用现有密钥或 `SSH_AUTH_SOCK`。加密密钥建议先在本机加载到 ssh-agent，不通过网页传输私钥或密码。不执行 `ssh-copy-id`，不修改远程 `authorized_keys`。
 
 密码登录可选：
@@ -87,4 +89,4 @@ uv run python -m app.cli test-directory --account-id ACCOUNT_ID --confirm-test-d
 
 这是应用层尽力审计，用户可以禁用或伪造 hook，不能保证覆盖脚本内部、嵌套 Shell、tmux 或所有秘密格式。HOME 重定向也不等于 Linux 权限隔离。真正的 Conda 激活与具体科研软件兼容性必须在真实环境验收，不能仅依据本地模拟宣称通过。
 
-Phase 3 文件管理、Phase 4 Slurm 管理页面/API 未实现。目录检查中的小文件上传仅为确认后的专用联调工具。
+Phase 3 文件管理已实现，见 [Phase 3 手册](phase3.md)。Phase 4 Slurm 管理页面/API 尚未实现。目录检查中的小文件上传为确认后的专用联调工具。

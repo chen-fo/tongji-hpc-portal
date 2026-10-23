@@ -4,17 +4,19 @@ import getpass
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.engine import make_url
 
 from app.config import get_settings
 from app.db.session import make_engine, make_session_factory
-from app.models.entities import OfficialAccount, User
+from app.models.entities import LoginThrottle, OfficialAccount, User
 from app.schemas.accounts import Password, Username
 from app.security.passwords import hash_password
+from app.services.auth import digest, revoke_sessions
 from app.ssh.credentials import CredentialProvider
 from app.ssh.manager import MockSSHConnectionManager, SSHUnavailable
 from app.ssh.real import RealSSHConnectionManager, connection_options
@@ -25,6 +27,8 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init-admin")
     init.add_argument("--username", required=True)
+    reset = commands.add_parser("reset-admin", help="本机隐藏输入新密码并撤销管理员旧会话")
+    reset.add_argument("--username", required=True)
     probe = commands.add_parser("probe-ssh")
     probe.add_argument("--account-id", type=int, required=True)
     probe.add_argument("--real", action="store_true")
@@ -101,6 +105,43 @@ def main():
                 )
                 db.commit()
                 print("管理员已创建")
+            elif args.command == "reset-admin":
+                if not sys.stdin.isatty():
+                    parser.error("管理员密码重置必须在本机交互终端中隐藏输入")
+                TypeAdapter(Username).validate_python(args.username)
+                user = db.scalar(
+                    select(User).where(User.username == args.username, User.role == "admin")
+                )
+                if not user:
+                    parser.error("指定的管理员不存在；不会创建账号或修改普通用户")
+                user_id = user.id
+                # Release the read transaction while the owner chooses a new password.
+                db.rollback()
+                password = getpass.getpass("新的网页管理员密码（12–128 字符）: ")
+                TypeAdapter(Password).validate_python(password)
+                if password != getpass.getpass("再次输入新密码: "):
+                    parser.error("两次密码不一致，未修改密码")
+                password_hash = hash_password(password)
+                db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+                user = db.get(User, user_id, populate_existing=True)
+                if not user or user.username != args.username or user.role != "admin":
+                    parser.error("管理员身份发生变化，未修改密码")
+                user.password_hash = password_hash
+                revoke_sessions(db, user.id)
+                # Local recovery also permits immediate login after forgotten-password attempts.
+                db.execute(
+                    delete(LoginThrottle).where(
+                        LoginThrottle.key.in_(
+                            [
+                                digest("user:" + args.username),
+                                digest("ip:127.0.0.1"),
+                                digest("ip:::1"),
+                            ]
+                        )
+                    )
+                )
+                db.commit()
+                print("网页管理员密码已重置，旧登录会话已撤销；请使用新密码登录")
             elif args.command == "probe-ssh":
                 if args.real and not args.confirm_authorized:
                     parser.error("真实只读检查需要 --confirm-authorized，请先取得学校授权")
@@ -154,6 +195,8 @@ def main():
                     with sqlite3.connect(destination) as dst:
                         src.backup(dst)
                 print(f"备份已完成: {destination}")
+    except (KeyboardInterrupt, EOFError):
+        parser.exit(130, "操作已取消\n")
     except SSHUnavailable as exc:
         parser.exit(1, f"操作未完成：{exc}\n")
     except ValidationError:

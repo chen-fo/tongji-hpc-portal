@@ -23,6 +23,10 @@ if __name__ == "__main__":
             _env_file=None,
             database_url=f"sqlite:///{root / 'portal.sqlite3'}",
             mock_root=root / "mock-ssh",
+            ssh_mode="mock",
+            ssh_profiles={},
+            ssh_allowed_targets=["mock-a:22", "mock-b:22", "mock-c:22"],
+            allowed_origins=[os.environ.get("PORTAL_E2E_ORIGIN", "http://127.0.0.1:15173")],
         )
         cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
         cfg.attributes["database_url"] = settings.database_url
@@ -37,4 +41,4 @@ if __name__ == "__main__":
                 )
             )
             db.commit()
-        uvicorn.run(app, host="127.0.0.1", port=8000)
+        uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORTAL_E2E_API_PORT", "18000")))

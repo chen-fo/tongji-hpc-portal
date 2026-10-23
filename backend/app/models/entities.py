@@ -1,6 +1,16 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -90,3 +100,17 @@ class CommandAudit(Base):
     cwd: Mapped[str] = mapped_column(String(4096))
     exit_code: Mapped[int | None] = mapped_column(Integer)
     audit_source: Mapped[str] = mapped_column(String(32), default="bash_debug")
+
+
+class FileAudit(Base):
+    __tablename__ = "file_audit"
+    __table_args__ = (Index("ix_file_audit_user_time", "user_id", "timestamp"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    official_account_id: Mapped[int] = mapped_column(ForeignKey("official_accounts.id"), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    operation: Mapped[str] = mapped_column(String(16))
+    remote_path: Mapped[str] = mapped_column(String(4096))
+    destination: Mapped[str | None] = mapped_column(String(4096))
+    status: Mapped[str] = mapped_column(String(16))
+    file_size: Mapped[int] = mapped_column(BigInteger, default=0)
