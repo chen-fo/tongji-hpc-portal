@@ -68,6 +68,8 @@ def main():
                     host="127.0.0.1",
                     port=args.port,
                     ws_max_size=32768,
+                    proxy_headers=True,
+                    forwarded_allow_ips="127.0.0.1",
                 )
             elif args.command == "sync-ssh-account":
                 from app.schemas.accounts import AccountInput

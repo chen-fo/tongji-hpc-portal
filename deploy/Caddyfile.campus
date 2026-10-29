@@ -1,0 +1,37 @@
+{
+	admin off
+	persist_config off
+	skip_install_trust
+	auto_https disable_redirects
+	grace_period 5s
+	storage file_system {
+		root {$PORTAL_CADDY_DATA}
+	}
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://{$PORTAL_CAMPUS_IP}:{$PORTAL_CAMPUS_PORT:8443} {
+	bind {$PORTAL_CAMPUS_IP}
+	tls internal
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy same-origin
+		Cache-Control no-store
+	}
+	@outside not remote_ip {$PORTAL_CAMPUS_CIDR}
+	@backend path /api/* /ws/*
+	route {
+		respond @outside "仅允许已配置的校园网网段访问" 403
+		handle @backend {
+			reverse_proxy {$PORTAL_API_UPSTREAM:127.0.0.1:8000}
+		}
+		handle {
+			root * {$PORTAL_FRONTEND_DIST}
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}

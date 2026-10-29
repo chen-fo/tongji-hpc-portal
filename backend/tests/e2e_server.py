@@ -27,6 +27,7 @@ if __name__ == "__main__":
             ssh_profiles={},
             ssh_allowed_targets=["mock-a:22", "mock-b:22", "mock-c:22"],
             allowed_origins=[os.environ.get("PORTAL_E2E_ORIGIN", "http://127.0.0.1:15173")],
+            cookie_secure=os.environ.get("PORTAL_E2E_SECURE") == "true",
         )
         cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
         cfg.attributes["database_url"] = settings.database_url

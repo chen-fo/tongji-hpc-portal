@@ -55,6 +55,8 @@ npm run dev
 
 开发服务只监听回环地址。`PORTAL_COOKIE_SECURE=false` 仅适用于本地 HTTP；校园网部署需 HTTPS、Secure Cookie 和网络访问限制，不能直接暴露 Vite 开发服务。参见 [macOS 运行说明](docs/macos.md)。
 
+本机已按用户要求配置校园网 HTTPS 入口 **https://100.78.91.204:8443**，当前仅允许实际连接的子网 `100.78.0.0/15`。继续使用 `.tools/run-web-terminal.sh` 启动；访问电脑首次需手动信任 `.tools/campus/portal-campus-ca.crt`，并使用 Portal 账号登录。前后端开发端口仍只在本机监听，公网/跨网段可达性不作假定。见 [校园网访问说明](docs/campus.md)。
+
 ## 完成一次 Mock 验收
 
 1. 确认 `PORTAL_SSH_MODE=mock` 并使用独立的 Mock 数据库。管理员登录后进入“官方账号”，配置下面三个模拟账号，启用并逐一“检查连接”。

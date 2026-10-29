@@ -1,6 +1,6 @@
 # macOS 本地运行与数据维护
 
-当前交付是本地开发和 Mock 验收环境。launchd、正式校园网部署、休眠恢复、日志轮转和定时备份属于 Phase 5，本次不实现。
+当前支持本地开发、Mock/真实 SSH，以及按用户要求补充的校园网 HTTPS 入口。launchd、休眠恢复、日志轮转和定时备份仍未实现。校园网使用方式见 [校园网访问](campus.md)。
 
 ## 工具与运行目录
 
@@ -26,6 +26,6 @@ uv run python -m app.cli backup-db --output /absolute/path/portal-backup.sqlite3
 
 ## 校园网部署前必须完成的工作
 
-本版本只监听 127.0.0.1；没有直接对外开放。正式部署需要提供可信 HTTPS 反向代理、设置 `PORTAL_COOKIE_SECURE=true`、将实际 HTTPS Origin 写入 `PORTAL_ALLOWED_ORIGINS`，并由主机防火墙或反向代理限制校园网网段。IP 网段、域名、证书与学校代理授权必须来自管理员实际配置，不能猜测。
+默认开发服务只监听 127.0.0.1。当前本机的校园网模式已提供 Caddy HTTPS 入口、Secure Cookie、实际 HTTPS Origin 与按网卡实际子网设置的来源限制；前后端开发端口继续只在本机开放。访问电脑需手动信任本地 CA；学校设备隔离及跨校内网段可达性仍需外部电脑实测。IP 网段、域名、证书与学校代理授权必须来自管理员实际配置，不能猜测。
 
 如果反向代理转发来源 IP，需要仅信任受控代理的转发头。示例本地部署不开放 Uvicorn 到外网。Secure Cookie 的 HTTP 开发例外不得沿用到校园网部署。
