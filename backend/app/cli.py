@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
@@ -35,6 +36,10 @@ def main():
     probe.add_argument("--confirm-authorized", action="store_true")
     probe.add_argument("--prompt-password", action="store_true")
     probe.add_argument("--control-socket", help="只读复用现有 OpenSSH master，不用于网页终端认证")
+    slurm_probe = commands.add_parser("probe-slurm", help="只读检查真实 Slurm 命令与历史查询能力")
+    slurm_probe.add_argument("--account-id", type=int, required=True)
+    slurm_probe.add_argument("--confirm-authorized", action="store_true")
+    slurm_probe.add_argument("--prompt-password", action="store_true")
     sync = commands.add_parser(
         "sync-ssh-account", help="从本地 SSH profile 同步一个官方账号，仅写本地数据库"
     )
@@ -167,6 +172,41 @@ def main():
                         else MockSSHConnectionManager(settings).probe(account)
                     )
                 print(json.dumps(asyncio.run(action), ensure_ascii=False, indent=2))
+            elif args.command == "probe-slurm":
+                from app.ssh.slurm import RealSlurmCollector, probe_slurm
+
+                if not args.confirm_authorized:
+                    parser.error("真实 Slurm 只读检查需要 --confirm-authorized")
+                account = db.get(OfficialAccount, args.account_id)
+                if not account or not account.enabled:
+                    parser.error("官方账号不存在或已停用")
+                # Keep the read transaction short while the owner enters a password
+                # and the scheduler responds; copy only non-secret connection metadata.
+                account = OfficialAccount(
+                    **{
+                        name: getattr(account, name)
+                        for name in (
+                            "id",
+                            "alias",
+                            "ssh_host",
+                            "ssh_port",
+                            "ssh_username",
+                            "ssh_key_reference",
+                            "enabled",
+                        )
+                    }
+                )
+                db.rollback()
+                if args.prompt_password:
+                    credentials.prompt(account.alias)
+                since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+                    days=settings.slurm_initial_lookback_days
+                )
+                collector = RealSlurmCollector(
+                    settings, RealSSHConnectionManager(settings, credentials)
+                )
+                result = asyncio.run(probe_slurm(collector, account, since))
+                print(json.dumps(result, ensure_ascii=False, indent=2))
             elif args.command == "test-directory":
                 from app.ssh.directory_check import check_test_directory
 

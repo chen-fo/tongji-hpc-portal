@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,6 +32,15 @@ class OfficialAccount(Base):
     ssh_key_reference: Mapped[str] = mapped_column(String(64))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+Index(
+    "uq_official_ssh_identity",
+    func.lower(OfficialAccount.ssh_host),
+    OfficialAccount.ssh_port,
+    OfficialAccount.ssh_username,
+    unique=True,
+)
 
 
 class User(Base):

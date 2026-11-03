@@ -1,8 +1,8 @@
 # Tongji HPC Portal
 
-按 [plan.md](plan.md) 实现的 Phase 0 / Phase 1 / Phase 2 / Phase 3：React + TypeScript + Vite + Ant Design + xterm.js 前端，FastAPI / AsyncSSH 模块化后端，SQLite / SQLAlchemy / Alembic，Argon2id 与 HttpOnly Session Cookie。
+按 [plan.md](plan.md) 实现的 Phase 0–3 及 Phase 4 任务观察与内部计费初版：React + TypeScript + Vite + Ant Design + xterm.js 前端，FastAPI / AsyncSSH 模块化后端，SQLite / SQLAlchemy / Alembic，Argon2id 与 HttpOnly Session Cookie。
 
-保留 **Mock SSH**，支持 **真实 AsyncSSH**、WebSocket PTY 终端、SFTP 个人文件管理与管理员命令/文件记录查询。真实写入与真实终端访问默认分别关闭，须完成对应验收。Phase 4 Slurm 任务、预算与计费尚未开发。
+保留 **Mock SSH**，支持 **真实 AsyncSSH**、WebSocket PTY 终端、SFTP 个人文件管理与管理员命令/文件记录查询。新增 Slurm 只读同步、任务人工归属、预算提醒、费率和内部费用核算。真实写入与真实终端访问默认分别关闭，须完成对应验收。Phase 4 已在同济 Intel 账号上通过空结果的只读查询，实际任务记录仍待验证；未预置真实费率，不支持网页提交作业或强制额度，详见 [Phase 4 说明](docs/phase4.md)。
 
 本机已按用户提供的 Intel 账号写入受保护且忽略版本管理的 `.env`；AsyncSSH 独立只读检查、test01 目录、真实网页终端执行 `pwd` 与命令日志入库均已通过。同样的虚拟 HOME Shell 中公共 Conda/Python 补验通过；管理员网页对真实日志的显示仍待最后核对，详见 [开发进度](docs/progress.md)。
 
@@ -106,13 +106,14 @@ Playwright 会在独立的 18000、15173 端口启动前后端，不需要停止
 - 所有修改请求校验 Origin；登录后的修改请求还校验 Session 绑定的 CSRF Token。API 没有公开注册或任意修改身份映射接口。
 - 登录失败按来源 IP 和用户名限制，15 分钟窗口内达到 5 次后拒绝登录，状态写入 SQLite。API 不信任客户端自行传入的 `X-Forwarded-For`。
 - 官方账号最多三个；已绑定用户的 SSH 主机、端口、登录用户名不可修改。成员用户名、映射和工作目录不可直接变更，管理员不能通过成员管理自我停用。
-- Phase 2 的终端记录继续保留；Phase 3 新增 `file_audit` 和 `0003_files` 迁移。Slurm 与计费表尚未建立。
+- Phase 2 的终端记录和 Phase 3 的文件记录继续保留；Phase 4 新增任务、计费及相关审计表。升级前应先备份，再执行全部迁移。
 
 ## 文档
 
 - [开发进度与验收](docs/progress.md)
 - [Phase 2 配置、联调与终端手册](docs/phase2.md)
 - [Phase 3 文件管理与传输说明](docs/phase3.md)
+- [Phase 4 任务、预算与内部计费说明](docs/phase4.md)
 - [管理员手册](docs/admin.md)
 - [学生手册](docs/student.md)
 - [macOS 运行、备份与恢复](docs/macos.md)

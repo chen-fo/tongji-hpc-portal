@@ -6,7 +6,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.models.billing import BillingEntry
 from app.models.entities import OfficialAccount, User
+from app.models.jobs import SlurmJob
 from app.schemas.accounts import AccountInput, UserCreate, UserPatch
 from app.security.passwords import hash_password
 from app.services.auth import revoke_sessions
@@ -28,18 +30,42 @@ def save_account(db: Session, settings: Settings, data: AccountInput, account_id
         raise HTTPException(404, "官方账号不存在")
     if not account and db.scalar(select(func.count()).select_from(OfficialAccount)) >= 3:
         raise HTTPException(409, "本阶段最多配置三个官方账号")
-    if account and db.scalar(
-        select(User.id).where(User.official_account_id == account.id).limit(1)
-    ):
-        if any(
-            getattr(account, field) != getattr(data, field)
-            for field in (
-                ("alias", "ssh_host", "ssh_port", "ssh_username")
-                if settings.ssh_mode == "real"
-                else ("ssh_host", "ssh_port", "ssh_username")
+    if account:
+        has_members = bool(
+            db.scalar(select(User.id).where(User.official_account_id == account.id).limit(1))
+        )
+        has_history = bool(
+            db.scalar(
+                select(SlurmJob.id).where(SlurmJob.official_account_id == account.id).limit(1)
             )
+            or db.scalar(
+                select(BillingEntry.id)
+                .where(BillingEntry.official_account_id == account.id)
+                .limit(1)
+            )
+        )
+        protected = (
+            ("alias", "ssh_host", "ssh_port", "ssh_username")
+            if has_history or settings.ssh_mode == "real"
+            else ("ssh_host", "ssh_port", "ssh_username")
+        )
+        if (has_members or has_history) and any(
+            getattr(account, field) != getattr(data, field) for field in protected
         ):
-            raise HTTPException(409, "该账号已有用户绑定，连接身份不可修改；迁移尚未开放")
+            raise HTTPException(
+                409, "该账号已有用户、任务或费用记录，连接身份不可修改；迁移尚未开放"
+            )
+    # Serialize the lookup and write with the same SQLite write transaction.
+    # A unique expression index independently enforces this invariant in the DB.
+    duplicate = select(OfficialAccount.id).where(
+        func.lower(OfficialAccount.ssh_host) == data.ssh_host.lower(),
+        OfficialAccount.ssh_port == data.ssh_port,
+        OfficialAccount.ssh_username == data.ssh_username,
+    )
+    if account:
+        duplicate = duplicate.where(OfficialAccount.id != account.id)
+    if db.scalar(duplicate.limit(1)):
+        raise HTTPException(409, "该 SSH 主机、端口和用户名已配置为另一官方账号")
     candidate = OfficialAccount(**data.model_dump())
     # Disabled configurations still must refer to an approved target.
     candidate.enabled = True

@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     files_max_per_account: int = Field(default=4, ge=1, le=20)
     files_max_total: int = Field(default=8, ge=1, le=50)
     files_idle_seconds: float = Field(default=60, ge=1, le=300)
+    slurm_sync_interval_seconds: int = Field(default=30, ge=5, le=3600)
+    slurm_initial_lookback_days: int = Field(default=30, ge=1, le=3650)
+    slurm_full_history_interval_seconds: int = Field(default=3600, ge=60, le=3600)
+    slurm_max_records: int = Field(default=5000, ge=1, le=20000)
 
 
 @lru_cache

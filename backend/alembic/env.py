@@ -1,7 +1,7 @@
 from alembic import context
 from app.config import get_settings
 from app.db.session import Base, make_engine
-from app.models import entities  # noqa: F401
+from app.models import billing, entities, jobs  # noqa: F401
 
 config = context.config
 target_metadata = Base.metadata

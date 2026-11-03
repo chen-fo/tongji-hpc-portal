@@ -13,7 +13,7 @@ export function Overview() {
       { key: 'account', label: '官方账号 ID', children: user!.official_account_id || '管理员未绑定计算账号' },
       { key: 'home', label: '个人工作目录', children: <code>{user!.remote_home || '—'}</code> },
     ]} /></Card>
-    <Alert type="info" showIcon message="Phase 3：个人文件管理" description={user!.role === 'admin' ? '可管理账号、成员并查询终端与文件操作记录。Slurm 任务和预算计费尚未开放。' : '在“终端”中使用 HPC，在“文件”中管理自己的数据。Slurm 任务和预算计费尚未开放。'} />
+    <Alert type="info" showIcon message="课题组工作空间" description={user!.role === 'admin' ? '可管理账号、成员，查看任务及终端、文件操作记录。' : '在“终端”中使用 HPC，在“文件”中管理数据，在“任务”中查看已归属的作业。'} />
     <p className="muted">虚拟账号不对应 HPC Linux 系统用户，个人工作目录不提供操作系统级权限隔离。</p>
   </>;
 }
